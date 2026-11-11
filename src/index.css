@@ -1097,6 +1097,17 @@ input:focus-visible {
   letter-spacing: 0.04em;
 }
 
+.site-footer a {
+  color: var(--apache-gold);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--golden-amber);
+  text-decoration: underline;
+}
+
 .profile-page {
   display: flex;
   min-height: 100vh;

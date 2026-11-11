@@ -519,6 +519,9 @@ function ParticipantRegistration() {
       <footer className="site-footer">
         <span>{INTERNAL_COLLEGE}</span>
         <span>Science Expo 2026</span>
+        <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer">
+          Join our WhatsApp community
+        </a>
       </footer>
     </main>
   );
@@ -744,6 +747,9 @@ function ParticipantProfile() {
       <footer className="site-footer">
         <span>{INTERNAL_COLLEGE}</span>
         <span>Science Expo 2026</span>
+        <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer">
+          Join our WhatsApp community
+        </a>
       </footer>
     </main>
   );
