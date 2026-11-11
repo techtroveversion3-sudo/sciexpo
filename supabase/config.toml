@@ -1,0 +1,2 @@
+[functions.send-registration-emails]
+verify_jwt = false

@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/wasd4381", "destination": "/" },
+    { "source": "/wasd4381/", "destination": "/" }
+  ]
+}
