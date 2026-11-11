@@ -1,9 +1,13 @@
 import "./index.css";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 
 const INTERNAL_COLLEGE = "Saveetha Institute of Medical And Technical Science";
 const TEAM_SIZES = [2, 3, 4] as const;
+const PROFILE_PATH = "/profile/";
+const ADMIN_PATH = "/wasd4381/";
+const WHATSAPP_COMMUNITY_URL = "https://chat.whatsapp.com/CIHaS5HmoGzIz3UqCf5Hz7";
 
 type ParticipantType = "internal" | "external";
 type Participation = "solo" | "team";
@@ -38,36 +42,52 @@ function ParticipantRegistration() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedRegistrationCode, setSubmittedRegistrationCode] = useState("");
   const [leaderGoogleEmail, setLeaderGoogleEmail] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const registrationRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      setAuthChecking(false);
+      return;
+    }
 
-    const applyLeaderSession = (email: string | null) => {
-      const normalizedEmail = email?.trim().toLowerCase() ?? "";
+    let active = true;
+    const applyLeaderSession = (session: Session | null) => {
+      if (!active) return;
+      const isGoogleUser = session?.user.app_metadata.provider === "google";
+      const normalizedEmail = isGoogleUser ? session.user.email?.trim().toLowerCase() ?? "" : "";
       setLeaderGoogleEmail(normalizedEmail);
       setLeader((current) => ({ ...current, email: normalizedEmail }));
-      setAuthError("");
+      setAuthError(session && !isGoogleUser ? "Sign in with Google to begin registration." : "");
+      setAuthChecking(false);
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      applyLeaderSession(session?.user.email ?? null);
+      applyLeaderSession(session);
     });
 
     supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
       if (error) {
         setAuthError(`Could not check Google sign-in: ${error.message}`);
+        setAuthChecking(false);
         return;
       }
-      applyLeaderSession(data.session?.user.email ?? null);
+      applyLeaderSession(data.session);
     }).catch((error: unknown) => {
+      if (!active) return;
       setAuthError(error instanceof Error ? error.message : "Could not check Google sign-in");
+      setAuthChecking(false);
     });
 
-    return () => authListener.subscription.unsubscribe();
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const signInLeaderWithGoogle = async () => {
@@ -180,8 +200,13 @@ function ParticipantRegistration() {
     };
 
     try {
-      const { error } = await supabase.from("registrations").insert([row]);
+      const { data, error } = await supabase
+        .from("registrations")
+        .insert([row])
+        .select("registration_code")
+        .single();
       if (error) throw error;
+      setSubmittedRegistrationCode(data.registration_code);
       setSubmitted(true);
     } catch (error: unknown) {
       setErrors({
@@ -272,6 +297,7 @@ function ParticipantRegistration() {
   return (
     <main>
       <section className="hero">
+        <a className="profile-link" href={PROFILE_PATH}>My profile</a>
         <div className="hero-content">
           <p className="institution-name">{INTERNAL_COLLEGE}</p>
           <p className="event-label">Annual science exhibition</p>
@@ -305,6 +331,14 @@ function ParticipantRegistration() {
           <div><span>Participation</span><strong>Solo or team</strong></div>
           <div><span>Team size</span><strong>Up to four people</strong></div>
         </div>
+        <a
+          className="community-link"
+          href={WHATSAPP_COMMUNITY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Join the Science Expo WhatsApp community
+        </a>
       </section>
 
       <section className="registration-section" ref={registrationRef} id="register">
@@ -321,11 +355,40 @@ function ParticipantRegistration() {
             </p>
           )}
 
-          {submitted ? (
+          {authChecking ? (
+            <div className="form-panel" role="status">Checking your Google sign-in…</div>
+          ) : !leaderGoogleEmail ? (
+            <div className="form-panel registration-auth-gate">
+              <h3>Sign in to begin</h3>
+              <p className="panel-description">
+                Registration details are available after you sign in successfully with Google.
+              </p>
+              <button
+                className="primary-button google-signin-button"
+                type="button"
+                onClick={signInLeaderWithGoogle}
+                disabled={authBusy || !supabase}
+              >
+                {authBusy ? "Connecting to Google" : "Continue with Google"}
+              </button>
+              {authError && <p className="field-error" role="alert">{authError}</p>}
+            </div>
+          ) : submitted ? (
             <div className="success-panel" role="status">
               <p className="section-kicker">Registration received</p>
               <h3>Thank you for registering</h3>
               <p>Your details have been submitted for Science Expo 2026.</p>
+              <p className="registration-code">
+                Registration code: <strong>{submittedRegistrationCode || "Check your profile for the code"}</strong>
+              </p>
+              <a
+                className="community-link"
+                href={WHATSAPP_COMMUNITY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Join the Science Expo WhatsApp community
+              </a>
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate>
@@ -461,8 +524,230 @@ function ParticipantRegistration() {
   );
 }
 
-const ADMIN_PATH = "/wasd4381/";
 const ADMIN_PREVIEW_MODE = import.meta.env.DEV;
+
+interface ParticipantRegistrationStatus {
+  registration_code: string;
+  created_at: string;
+  participation_type: ParticipantType;
+  team_or_solo: Participation;
+  team_size: number;
+}
+
+function ParticipantProfile() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [registration, setRegistration] = useState<ParticipantRegistrationStatus | null>(null);
+  const [loadingRegistration, setLoadingRegistration] = useState(false);
+  const [registrationError, setRegistrationError] = useState("");
+  const isGoogleUser = session?.user.app_metadata.provider === "google" && Boolean(session.user.email);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthChecking(false);
+      return;
+    }
+
+    let active = true;
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return;
+      setSession(nextSession);
+      setAuthError("");
+      setAuthChecking(false);
+    });
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setAuthError(`Could not check Google sign-in: ${error.message}`);
+      } else {
+        setSession(data.session);
+      }
+      setAuthChecking(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setAuthError(error instanceof Error ? error.message : "Could not check Google sign-in.");
+      setAuthChecking(false);
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authChecking) return;
+    const userEmail = session?.user.email;
+    if (!supabase || !isGoogleUser || !userEmail) {
+      setRegistration(null);
+      setLoadingRegistration(false);
+      setRegistrationError("");
+      return;
+    }
+
+    let active = true;
+    setLoadingRegistration(true);
+    setRegistrationError("");
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("registrations")
+          .select("registration_code, created_at, participation_type, team_or_solo, team_size")
+          .eq("leader_email", userEmail.trim().toLowerCase())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        if (active) setRegistration(data);
+      } catch (error: unknown) {
+        if (active) {
+          setRegistrationError(error instanceof Error ? error.message : "Could not load registration status.");
+        }
+      } finally {
+        if (active) setLoadingRegistration(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [authChecking, isGoogleUser, session]);
+
+  const signInWithGoogle = async () => {
+    if (!supabase) {
+      setAuthError("Google sign-in is unavailable because Supabase is not configured.");
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}${PROFILE_PATH}`,
+          queryParams: { prompt: "select_account" },
+        },
+      });
+      if (error) throw error;
+    } catch (error: unknown) {
+      setAuthError(error instanceof Error ? error.message : "Google sign-in could not be started.");
+      setAuthBusy(false);
+    }
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setSession(null);
+    } catch (error: unknown) {
+      setAuthError(error instanceof Error ? `Could not sign out: ${error.message}` : "Could not sign out.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  return (
+    <main className="profile-page">
+      <header className="profile-header">
+        <a href="/" className="profile-brand">Science Expo 2026</a>
+        <a href="/" className="profile-back-link">Event home</a>
+      </header>
+      <section className="profile-content">
+        <p className="section-kicker">Participant account</p>
+        <h1>My profile</h1>
+        <p className="profile-intro">Sign in with Google to view your Science Expo registration status.</p>
+
+        {authChecking ? (
+          <div className="profile-card" role="status">Checking your Google sign-in…</div>
+        ) : !supabase ? (
+          <div className="profile-card" role="alert">
+            Google sign-in is unavailable because Supabase is not configured.
+          </div>
+        ) : !session ? (
+          <div className="profile-card">
+            <h2>Sign in to your profile</h2>
+            <p>Your registration details are private and available only to the Google account used to register.</p>
+            <button className="primary-button" type="button" onClick={signInWithGoogle} disabled={authBusy}>
+              {authBusy ? "Connecting to Google…" : "Continue with Google"}
+            </button>
+            {authError && <p className="field-error" role="alert">{authError}</p>}
+          </div>
+        ) : !isGoogleUser ? (
+          <div className="profile-card">
+            <h2>Google sign-in required</h2>
+            <p>This account did not sign in with Google. Sign in with Google to access participant registration.</p>
+            <div className="profile-actions">
+              <button className="primary-button" type="button" onClick={signInWithGoogle} disabled={authBusy}>
+                {authBusy ? "Connecting to Google…" : "Continue with Google"}
+              </button>
+              <button className="secondary-button" type="button" onClick={signOut} disabled={authBusy}>
+                Sign out
+              </button>
+            </div>
+            {authError && <p className="field-error" role="alert">{authError}</p>}
+          </div>
+        ) : (
+          <>
+            <div className="profile-account">
+              <span>Signed in as</span>
+              <strong>{session.user.email}</strong>
+              <button className="secondary-button" type="button" onClick={signOut} disabled={authBusy}>
+                {authBusy ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+            {registrationError ? (
+              <div className="profile-card" role="alert">
+                <h2>Could not load registration status</h2>
+                <p>{registrationError}</p>
+              </div>
+            ) : loadingRegistration ? (
+              <div className="profile-card" role="status">Loading your registration status…</div>
+            ) : registration ? (
+              <div className="profile-card registration-status-card">
+                <p className="section-kicker">Registration status</p>
+                <h2>Registration received</h2>
+                <p>Your Science Expo 2026 registration has been submitted successfully.</p>
+                <dl className="profile-registration-details">
+                  <div><dt>Registration code</dt><dd>{registration.registration_code}</dd></div>
+                  <div><dt>Submitted</dt><dd>{new Date(registration.created_at).toLocaleDateString("en-IN")}</dd></div>
+                  <div><dt>Participation</dt><dd>{registration.participation_type === "internal" ? "Saveetha student" : "External participant"}</dd></div>
+                  <div><dt>Registration type</dt><dd>{registration.team_or_solo === "team" ? `Team of ${registration.team_size}` : "Individual"}</dd></div>
+                </dl>
+                <a
+                  className="community-link"
+                  href={WHATSAPP_COMMUNITY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Join the Science Expo WhatsApp community
+                </a>
+              </div>
+            ) : (
+              <div className="profile-card">
+                <p className="section-kicker">Registration status</p>
+                <h2>Not registered yet</h2>
+                <p>You are signed in with Google. You can now begin your Science Expo 2026 registration.</p>
+                <a className="primary-button profile-register-button" href="/#register">Start registration</a>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+      <footer className="site-footer">
+        <span>{INTERNAL_COLLEGE}</span>
+        <span>Science Expo 2026</span>
+      </footer>
+    </main>
+  );
+}
 
 interface AdminMember {
   name: string;
@@ -1088,5 +1373,7 @@ function AdminDetail({ label, value }: { label: string; value: string }) {
 
 export default function App() {
   const path = `${window.location.pathname.replace(/\/+$/, "")}/`;
-  return path === ADMIN_PATH ? <AdminDashboard /> : <ParticipantRegistration />;
+  if (path === ADMIN_PATH) return <AdminDashboard />;
+  if (path === PROFILE_PATH) return <ParticipantProfile />;
+  return <ParticipantRegistration />;
 }

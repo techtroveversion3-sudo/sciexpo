@@ -82,6 +82,24 @@ input:focus-visible {
   width: min(760px, 100%);
 }
 
+.profile-link {
+  position: absolute;
+  top: 32px;
+  right: max(7vw, 24px);
+  z-index: 2;
+  color: var(--apache-gold);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.profile-link:hover,
+.profile-back-link:hover {
+  color: var(--golden-amber);
+}
+
 .institution-name,
 .event-label,
 .section-kicker {
@@ -233,6 +251,29 @@ input:focus-visible {
   font-family: "Cormorant Garamond", Georgia, serif;
   font-size: 1.55rem;
   font-weight: 600;
+}
+
+.community-link {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  padding: 10px 18px;
+  border: 1px solid var(--apache-gold);
+  border-radius: 2px;
+  color: var(--apache-gold);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.community-link:hover {
+  background: var(--apache-gold);
+  color: #242424;
 }
 
 .registration-section {
@@ -933,6 +974,21 @@ input:focus-visible {
   line-height: 1.7;
 }
 
+.success-panel .registration-code {
+  margin: 18px 0 0;
+  color: var(--muted);
+}
+
+.registration-code strong {
+  color: var(--apache-gold);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+
+.success-panel .community-link {
+  margin-top: 18px;
+}
+
 .site-footer {
   display: flex;
   flex-wrap: wrap;
@@ -944,6 +1000,143 @@ input:focus-visible {
   color: var(--muted);
   font-size: 0.78rem;
   letter-spacing: 0.04em;
+}
+
+.profile-page {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at 80% 10%, rgba(190, 162, 86, 0.09), transparent 32%),
+    var(--raisin-black);
+}
+
+.profile-header {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px max(7vw, 24px);
+  border-bottom: 1px solid var(--border);
+  background: rgba(29, 29, 29, 0.8);
+}
+
+.profile-brand {
+  color: var(--apache-gold);
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.profile-back-link {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.profile-content {
+  width: min(760px, 100%);
+  flex: 1;
+  margin: 0 auto;
+  padding: 82px 24px 100px;
+}
+
+.profile-content > h1 {
+  margin: 12px 0 8px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: clamp(3rem, 8vw, 5rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.profile-intro {
+  margin: 0 0 30px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.profile-card {
+  padding: clamp(24px, 5vw, 38px);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: rgba(45, 45, 45, 0.76);
+}
+
+.profile-card h2 {
+  margin: 0 0 8px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 2rem;
+  font-weight: 500;
+}
+
+.profile-card > p:not(.section-kicker) {
+  margin: 0 0 22px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.profile-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.profile-account strong {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.profile-account button {
+  margin-left: auto;
+}
+
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.profile-registration-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20px;
+  margin: 28px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.profile-registration-details div {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-registration-details dt {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.profile-registration-details dd {
+  margin: 0;
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.profile-register-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 @media (max-width: 640px) {
@@ -966,9 +1159,26 @@ input:focus-visible {
     bottom: 22px;
   }
 
+  .profile-link {
+    top: 24px;
+    right: 24px;
+  }
+
   .event-intro,
   .registration-section {
     padding: 76px 20px;
+  }
+
+  .profile-header {
+    padding: 16px 20px;
+  }
+
+  .profile-content {
+    padding: 64px 20px 76px;
+  }
+
+  .profile-registration-details {
+    grid-template-columns: 1fr;
   }
 
   .event-facts {

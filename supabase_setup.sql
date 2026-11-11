@@ -94,9 +94,14 @@ SELECT setval(
   'public.registration_code_seq',
   GREATEST(
     COALESCE((
-      SELECT MAX(SUBSTRING(registration_code FROM 4)::BIGINT)
+      SELECT MAX(
+        CASE
+          WHEN registration_code ~ '^REG-[0-9]+$' THEN SUBSTRING(registration_code FROM 5)::BIGINT
+          WHEN registration_code ~ '^SE-[0-9]+$' THEN SUBSTRING(registration_code FROM 4)::BIGINT
+        END
+      )
       FROM public.registrations
-      WHERE registration_code ~ '^SE-[0-9]+$'
+      WHERE registration_code ~ '^(REG|SE)-[0-9]+$'
     ), 0) + 1,
     (
       SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END
@@ -120,7 +125,7 @@ BEGIN
   IF TG_OP = 'INSERT' THEN
     next_code := nextval('public.registration_code_seq');
     NEW.registration_code :=
-      'SE-' || lpad(next_code::TEXT, GREATEST(4, length(next_code::TEXT)), '0');
+      'REG-' || lpad(next_code::TEXT, GREATEST(5, length(next_code::TEXT)), '0');
   END IF;
 
   IF jsonb_typeof(NEW.members) <> 'array' THEN
@@ -216,6 +221,7 @@ DROP POLICY IF EXISTS "Authenticated participants can submit registrations" ON p
 DROP POLICY IF EXISTS "Admins can read registrations" ON public.registrations;
 DROP POLICY IF EXISTS "Authenticated admins can read registrations" ON public.registrations;
 DROP POLICY IF EXISTS "Authenticated admins can update registrations" ON public.registrations;
+DROP POLICY IF EXISTS "Google participants can read own registrations" ON public.registrations;
 
 CREATE POLICY "Authenticated participants can submit registrations"
   ON public.registrations
@@ -223,6 +229,15 @@ CREATE POLICY "Authenticated participants can submit registrations"
   WITH CHECK (
     terms_accepted = true
     AND auth.jwt() -> 'app_metadata' ->> 'provider' = 'google'
+    AND NULLIF(auth.jwt() ->> 'email', '') IS NOT NULL
+    AND lower(auth.jwt() ->> 'email') = lower(leader_email)
+  );
+
+CREATE POLICY "Google participants can read own registrations"
+  ON public.registrations
+  FOR SELECT TO authenticated
+  USING (
+    auth.jwt() -> 'app_metadata' ->> 'provider' = 'google'
     AND NULLIF(auth.jwt() ->> 'email', '') IS NOT NULL
     AND lower(auth.jwt() ->> 'email') = lower(leader_email)
   );

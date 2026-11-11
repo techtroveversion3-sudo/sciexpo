@@ -44,6 +44,9 @@ Registration code: {{registration_code}}
 Participation: {{participation}}
 {{team_details}}
 
+Join the Science Expo WhatsApp community:
+https://chat.whatsapp.com/CIHaS5HmoGzIz3UqCf5Hz7
+
 We look forward to welcoming you.
 
 Science Expo Team`;

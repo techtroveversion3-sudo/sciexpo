@@ -24,7 +24,7 @@ Single-page registration website with an integrated admin dashboard for Science 
    - Authorized JavaScript origins: `http://localhost:5173`, `http://127.0.0.1:5173`, and your deployed website origin (for example, `https://your-domain.example`)
    - Authorized redirect URI: `https://muapudkguodnljykjudt.supabase.co/auth/v1/callback`
 
-   In **Authentication → URL Configuration**, set the site URL to your deployed website origin and allow the participant and admin sign-in return URLs for your local and deployed sites. Google redirects to Supabase first, then Supabase returns users to the page where they started sign-in. The dashboard route is not an access-control mechanism; access is enforced by the admin role and Supabase row-level security.
+   In **Authentication → URL Configuration**, set the site URL to your deployed website origin and allow the participant (`/`), profile (`/profile/`), and admin sign-in return URLs for your local and deployed sites. Google redirects to Supabase first, then Supabase returns users to the page where they started sign-in. The dashboard route is not an access-control mechanism; access is enforced by the admin role and Supabase row-level security.
 
 6. Google sign-in creates a Supabase user, but does not automatically grant admin access. After the first sign-in, run this in the Supabase SQL Editor, replacing the email with the exact administrator email:
 
@@ -34,13 +34,13 @@ Single-page registration website with an integrated admin dashboard for Science 
    WHERE email = 'admin@example.com';
    ```
 
-   Sign out and sign in again so the user's refreshed token includes the admin role. Only assign this role to trusted administrators; participant accounts do not need the admin role. Row Level Security permits admins to read and update registrations. Participants must sign in with Google before submitting; the database verifies the Google provider and that its account email matches the team leader email. Anonymous visitors cannot submit or read registrations.
+   Sign out and sign in again so the user's refreshed token includes the admin role. Only assign this role to trusted administrators; participant accounts do not need the admin role. The `/profile/` page shows a participant's registration status and code after Google sign-in. New registrations receive a sequential `REG-00001`-style code. Row Level Security permits admins to read and update registrations and permits Google participants to read only registrations submitted with their account email. Participants must sign in with Google before submitting; the database verifies the Google provider and that its account email matches the team leader email. Anonymous visitors cannot submit or read registrations.
 
 7. Re-run [`supabase_setup.sql`](supabase_setup.sql) when updating an existing project. Admins can update participant details and add team members up to the four-person limit.
 
 ## Registration email delivery
 
-Email delivery uses a Supabase queue and Edge Function with the Gmail API. It does not send from the website or expose Google credentials to participants. A registration adds exactly one email job: the team leader's address. Team members never receive registration email. The default confirmation subject is `Science Expo 2026 registration successful`; the message confirms registration for Science Expo at SIMATS Engineering, gives the event date (20 November 2026) and registration code, and lists team member names. For an individual registration, it identifies the participation as individual.
+Email delivery uses a Supabase queue and Edge Function with the Gmail API. It does not send from the website or expose Google credentials to participants. A registration adds exactly one email job: the team leader's address. Team members never receive registration email. The default confirmation subject is `Science Expo 2026 registration successful`; the message confirms registration for Science Expo at SIMATS Engineering, gives the event date (20 November 2026) and registration code, links the Science Expo WhatsApp community, and lists team member names. For an individual registration, it identifies the participation as individual.
 
 The worker enforces a maximum of 15 team-leader emails per batch, at least 5 minutes between batches, and a daily cap of 100 team-leader email attempts. It sends messages one at a time, waits about 1.1 seconds between API calls, and uses bounded retries with increasing delays. Retries count against the daily cap. After a batch with at least one successful leader delivery, it sends one copy of that leader's participant-style message to `gsuvedhan@gmail.com`. The verification copy is additional to the 100-leader daily cap.
 
