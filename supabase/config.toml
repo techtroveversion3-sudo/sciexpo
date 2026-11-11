@@ -1,2 +1,5 @@
 [functions.send-registration-emails]
 verify_jwt = false
+
+[functions.admin-send-registration-email]
+verify_jwt = true

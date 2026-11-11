@@ -709,6 +709,23 @@ input:focus-visible {
   background: rgba(216, 189, 113, 0.05);
 }
 
+.admin-participant-names {
+  display: flex;
+  min-width: 150px;
+  flex-direction: column;
+  gap: 3px;
+  white-space: normal;
+}
+
+.admin-participant-names strong {
+  color: #f3f0e9;
+  font-weight: 600;
+}
+
+.admin-participant-names span {
+  color: #b7b2a7;
+}
+
 .admin-badge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
@@ -863,9 +880,87 @@ input:focus-visible {
 
 .admin-modal-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.6rem;
   margin-top: 1rem;
+}
+
+@media (max-width: 760px) {
+  .admin-table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .admin-app table,
+  .admin-app tbody {
+    display: block;
+    white-space: normal;
+  }
+
+  .admin-app thead {
+    display: none;
+  }
+
+  .admin-app tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 1rem;
+    margin-bottom: 0.8rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid rgba(216, 189, 113, 0.16);
+    background: #2d2d2d;
+  }
+
+  .admin-app tbody td {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.55rem 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-app tbody td::before {
+    color: #b7b2a7;
+    content: attr(data-label);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .admin-app tbody td[data-label="Participants"],
+  .admin-app tbody td[data-label="College"],
+  .admin-app tbody td[data-label="Created At"],
+  .admin-app tbody td[data-label="Details"] {
+    grid-column: 1 / -1;
+  }
+
+  .admin-app tbody td[data-label="Participants"] {
+    display: block;
+  }
+
+  .admin-app tbody td[data-label="Participants"]::before {
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+
+  .admin-app tbody td.admin-empty-state {
+    display: block;
+    grid-column: 1 / -1;
+    padding: 1.5rem 0 !important;
+    text-align: center;
+  }
+
+  .admin-app tbody td.admin-empty-state::before {
+    content: none;
+  }
+
+  .admin-modal-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 640px) {

@@ -831,6 +831,9 @@ function AdminDashboard() {
   const [draft, setDraft] = useState<AdminRegistration | null>(null);
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailStatus, setEmailStatus] = useState("");
+  const [emailError, setEmailError] = useState("");
 
   useEffect(() => {
     if (ADMIN_PREVIEW_MODE) {
@@ -957,6 +960,35 @@ function AdminDashboard() {
       setAuthError(error instanceof Error ? `Could not sign out: ${error.message}` : "Could not sign out.");
     } finally {
       setAuthBusy(false);
+    }
+  };
+
+  const sendRegistrationEmail = async () => {
+    if (!selected?.id || typeof selected.id !== "string" || ADMIN_PREVIEW_MODE) return;
+    if (!supabase) {
+      setEmailError("Email sending is unavailable because Supabase is not configured.");
+      return;
+    }
+
+    setEmailBusy(true);
+    setEmailStatus("");
+    setEmailError("");
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-send-registration-email", {
+        body: { registration_id: selected.id },
+      });
+      if (error) throw error;
+      if (data?.status === "sending") {
+        throw new Error("This registration email is already being sent. Try again shortly.");
+      }
+      if (data?.status !== "queued") {
+        throw new Error("The email was not queued. Please try again.");
+      }
+      setEmailStatus("Confirmation email queued. It will be sent by the scheduled email worker.");
+    } catch (error: unknown) {
+      setEmailError(error instanceof Error ? error.message : "Could not queue the confirmation email.");
+    } finally {
+      setEmailBusy(false);
     }
   };
 
@@ -1207,8 +1239,8 @@ function AdminDashboard() {
           <table>
             <thead>
               <tr>
-                <th>Code</th><th>Type</th><th>Participation</th><th>Participants</th>
-                <th>Leader Name</th><th>Leader Email</th><th>Leader Phone</th>
+                <th>Code</th><th>Type</th><th>Participation</th><th>Participant Count</th>
+                <th>Participants</th><th>Leader Email</th><th>Leader Phone</th>
                 <th>College</th><th>Created At</th><th></th>
               </tr>
             </thead>
@@ -1217,25 +1249,36 @@ function AdminDashboard() {
                 <tr><td className="admin-empty-state" colSpan={10}>No registrations found.</td></tr>
               ) : filteredRegistrations.map((registration) => (
                 <tr key={registration.id ?? registration.registration_code}>
-                  <td>{registration.registration_code || "Not assigned"}</td>
-                  <td><span className={`admin-badge ${registration.participation_type}`}>
+                  <td data-label="Code">{registration.registration_code || "Not assigned"}</td>
+                  <td data-label="Type"><span className={`admin-badge ${registration.participation_type}`}>
                     {registration.participation_type}
                   </span></td>
-                  <td>{registration.team_or_solo === "team" ? "Team" : "Individual"}</td>
-                  <td>{registration.team_size || registration.members.length + 1}</td>
-                  <td>{registration.leader_name || "Not provided"}</td>
-                  <td>{registration.leader_email || "Not provided"}</td>
-                  <td>{registration.leader_phone || "Not provided"}</td>
-                  <td>{registration.leader_college || "Not provided"}</td>
-                  <td>{registration.created_at
+                  <td data-label="Participation">{registration.team_or_solo === "team" ? "Team" : "Individual"}</td>
+                  <td data-label="Participant Count">{registration.team_size || registration.members.length + 1}</td>
+                  <td data-label="Participants">
+                    <div className="admin-participant-names">
+                      <strong>{registration.leader_name || "Not provided"} (Leader)</strong>
+                      {registration.members.map((member, index) => (
+                        <span key={`${registration.id ?? registration.registration_code}-member-${index}`}>
+                          {member.name || "Not provided"}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td data-label="Leader Email">{registration.leader_email || "Not provided"}</td>
+                  <td data-label="Leader Phone">{registration.leader_phone || "Not provided"}</td>
+                  <td data-label="College">{registration.leader_college || "Not provided"}</td>
+                  <td data-label="Created At">{registration.created_at
                     ? new Date(registration.created_at).toLocaleDateString("en-IN", {
                       day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
                     })
                     : "Not available"}</td>
-                  <td><button className="admin-btn admin-btn-outline admin-btn-sm" type="button" onClick={() => {
+                  <td data-label="Details"><button className="admin-btn admin-btn-outline admin-btn-sm" type="button" onClick={() => {
                     setSelected(registration);
                     setDraft(null);
                     setSaveError("");
+                    setEmailStatus("");
+                    setEmailError("");
                   }}>View</button></td>
                 </tr>
               ))}
@@ -1351,6 +1394,18 @@ function AdminDashboard() {
                   </div>
                 </section>
                 <div className="admin-modal-actions">
+                  {emailStatus && <p className="admin-status" role="status">{emailStatus}</p>}
+                  {emailError && <p className="admin-error" role="alert">{emailError}</p>}
+                  {!ADMIN_PREVIEW_MODE && (
+                    <button
+                      className="admin-btn admin-btn-outline"
+                      type="button"
+                      onClick={() => void sendRegistrationEmail()}
+                      disabled={emailBusy || !selected.id}
+                    >
+                      {emailBusy ? "Queuing email…" : "Send confirmation email"}
+                    </button>
+                  )}
                   <button className="admin-btn" type="button" onClick={startEditing}>Edit details</button>
                 </div>
               </>

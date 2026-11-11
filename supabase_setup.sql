@@ -360,6 +360,79 @@ CREATE TRIGGER enqueue_registration_emails
   FOR EACH ROW EXECUTE FUNCTION public.enqueue_registration_emails();
 REVOKE ALL ON FUNCTION public.enqueue_registration_emails() FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.admin_enqueue_registration_email(target_registration_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  registration_row public.registrations%ROWTYPE;
+  queue_status TEXT;
+BEGIN
+  SELECT *
+  INTO registration_row
+  FROM public.registrations
+  WHERE id = target_registration_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+
+  INSERT INTO public.registration_email_queue AS existing_queue (
+    registration_id,
+    participant_name,
+    recipient_email,
+    registration_code,
+    team_details,
+    participation
+  )
+  VALUES (
+    registration_row.id,
+    registration_row.leader_name,
+    lower(btrim(registration_row.leader_email)),
+    registration_row.registration_code,
+    CASE
+      WHEN registration_row.team_or_solo = 'team' THEN 'Team members: ' || COALESCE((
+        SELECT string_agg(member ->> 'name', ', ' ORDER BY member_order)
+        FROM jsonb_array_elements(registration_row.members) WITH ORDINALITY AS members(member, member_order)
+      ), 'No additional members listed')
+      ELSE 'Individual registration'
+    END,
+    CASE WHEN registration_row.team_or_solo = 'team' THEN 'Team' ELSE 'Individual' END
+  )
+  ON CONFLICT (registration_id, recipient_email) DO UPDATE
+  SET participant_name = EXCLUDED.participant_name,
+      registration_code = EXCLUDED.registration_code,
+      team_details = EXCLUDED.team_details,
+      participation = EXCLUDED.participation,
+      status = 'pending',
+      attempts = 0,
+      next_attempt_at = now(),
+      batch_id = NULL,
+      sent_at = NULL,
+      provider_message_id = NULL,
+      last_error = NULL,
+      created_at = now()
+  WHERE existing_queue.status <> 'sending';
+
+  SELECT status
+  INTO queue_status
+  FROM public.registration_email_queue
+  WHERE registration_id = registration_row.id
+    AND recipient_email = lower(btrim(registration_row.leader_email));
+
+  IF queue_status = 'sending' THEN
+    RETURN jsonb_build_object('status', 'sending');
+  END IF;
+
+  RETURN jsonb_build_object('status', 'queued');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_enqueue_registration_email(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_enqueue_registration_email(UUID) TO service_role;
+
 -- Cancel any unsent team-member messages from an earlier version of this setup.
 UPDATE public.registration_email_queue q
 SET status = 'failed',
