@@ -39,19 +39,58 @@ Deno.serve(async (request) => {
     return response({ error: "Only administrators can queue registration emails" }, 403);
   }
 
-  let registrationId: unknown;
+  let requestBody: unknown;
   try {
-    ({ registration_id: registrationId } = await request.json());
+    requestBody = await request.json();
   } catch {
-    return response({ error: "A registration ID is required" }, 400);
+    return response({ error: "Registration IDs are required" }, 400);
   }
-  if (typeof registrationId !== "string" ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registrationId)) {
-    return response({ error: "A valid registration ID is required" }, 400);
+  if (!requestBody || typeof requestBody !== "object") {
+    return response({ error: "Registration IDs are required" }, 400);
+  }
+
+  const body = requestBody as Record<string, unknown>;
+  const isBatch = Array.isArray(body.registration_ids);
+  const rawRegistrationIds: unknown[] = isBatch ? body.registration_ids : [body.registration_id];
+  const registrationIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const registrationIds = rawRegistrationIds.filter(
+    (id): id is string => typeof id === "string" && registrationIdPattern.test(id),
+  );
+  if (
+    rawRegistrationIds.length < 1 ||
+    rawRegistrationIds.length > 15 ||
+    registrationIds.length !== rawRegistrationIds.length ||
+    new Set(registrationIds).size !== registrationIds.length
+  ) {
+    return response({ error: "Provide 1 to 15 unique, valid registration IDs" }, 400);
+  }
+
+  if (isBatch) {
+    const { data, error } = await supabase.rpc("admin_enqueue_registration_email_batch", {
+      target_registration_ids: registrationIds,
+    });
+    if (error) {
+      console.error("Could not queue admin registration email batch:", error.message);
+      return response({ error: "Could not queue the email batch" }, 500);
+    }
+
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (results.length !== registrationIds.length) {
+      console.error("Unexpected admin email batch response");
+      return response({ error: "Could not confirm the email batch status" }, 500);
+    }
+    const queuedCount = results.filter((result: { status?: unknown }) => result?.status === "queued").length;
+    return response({
+      status: queuedCount === registrationIds.length ? "queued" : queuedCount > 0 ? "partial" : "failed",
+      batch_id: data.batch_id,
+      queued_count: queuedCount,
+      total_count: registrationIds.length,
+      results,
+    });
   }
 
   const { data, error } = await supabase.rpc("admin_enqueue_registration_email", {
-    target_registration_id: registrationId,
+    target_registration_id: registrationIds[0],
   });
   if (error) {
     console.error("Could not queue admin registration email:", error.message);

@@ -44,7 +44,7 @@ Email delivery uses a Supabase queue and Edge Function with the Gmail API. It do
 
 The worker enforces a maximum of 15 team-leader emails per batch, at least 5 minutes between batches, and a daily cap of 100 team-leader email attempts. It sends messages one at a time, waits about 1.1 seconds between API calls, and uses bounded retries with increasing delays. Retries count against the daily cap. After a batch with at least one successful leader delivery, it sends one copy of that leader's participant-style message to `gsuvedhan@gmail.com`. The verification copy is additional to the 100-leader daily cap.
 
-Admins can select a registration and queue or resend its confirmation from the dashboard. The email is processed by the same scheduled worker, so normal batch and daily limits continue to apply. The authenticated `admin-send-registration-email` Edge Function checks the administrator role before queueing.
+Admins can select up to 15 registrations in the dashboard and queue them as one manual batch, or queue/resend one confirmation from a registration row or its details view. Manual batches stay grouped when claimed by the scheduled worker. The dashboard confirms how many messages were queued; normal five-minute and daily limits still apply. The authenticated `admin-send-registration-email` Edge Function checks the administrator role before queueing. Sample registrations in local preview cannot send email.
 
 These safeguards reduce bursts but cannot guarantee Gmail will not restrict an account. Send only transactional registration confirmations to people who supplied their addresses; do not use this system for unsolicited or promotional mail.
 

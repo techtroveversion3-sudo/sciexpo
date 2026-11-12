@@ -299,7 +299,11 @@ function ParticipantRegistration() {
       <section className="hero">
         <a className="profile-link" href={PROFILE_PATH}>My profile</a>
         <div className="hero-content">
-          <p className="institution-name">{INTERNAL_COLLEGE}</p>
+          <img
+            className="simats-logo hero-logo"
+            src="/simats-engineering-logo-white.png"
+            alt="SIMATS Engineering"
+          />
           <p className="event-label">Annual science exhibition</p>
           <h1>Science<br /><span>Expo 2026</span></h1>
           <p className="hero-summary">
@@ -339,6 +343,89 @@ function ParticipantRegistration() {
         >
           Join the Science Expo WhatsApp community
         </a>
+      </section>
+
+      <section className="rules-section" aria-labelledby="rules-title">
+        <div className="rules-wrap">
+          <div className="section-kicker">Prototype project showcase</div>
+          <h2 id="rules-title">Rules &amp; Regulations</h2>
+          <p className="rules-intro">
+            Please review the following requirements before registering your team and project.
+          </p>
+
+          <div className="rules-grid">
+            <article className="rule-card">
+              <h3>1. Team &amp; Registration</h3>
+              <ul>
+                <li>A team may have a maximum of four participants.</li>
+                <li>Participation is free; no registration fee will be collected.</li>
+                <li>Provide accurate participant and project details during registration.</li>
+                <li>Designate one participant as team leader and primary point of contact.</li>
+              </ul>
+            </article>
+
+            <article className="rule-card">
+              <h3>2. Selection Process</h3>
+              <ul>
+                <li>
+                  A selection round will take place before the excursion. Its date, time,
+                  and submission details will be announced shortly.
+                </li>
+                <li>All registered teams must participate as instructed by the organisers.</li>
+                <li>
+                  The top 70 teams, based on evaluation, will be shortlisted for the
+                  excursion and prototype showcase.
+                </li>
+                <li>Evaluation panel and organiser decisions are final.</li>
+              </ul>
+            </article>
+
+            <article className="rule-card">
+              <h3>3. Project &amp; Presentation</h3>
+              <ul>
+                <li>
+                  Projects must be original, or appropriately acknowledge external sources,
+                  references, and components.
+                </li>
+                <li>Teams should be ready to explain the problem, objectives, working principle, innovation, and practical applications.</li>
+                <li>
+                  Shortlisted teams must bring their prototype and required presentation
+                  materials on the scheduled excursion date.
+                </li>
+                <li>
+                  Teams are responsible for safely arranging and transporting prototypes,
+                  components, and accessories.
+                </li>
+                <li>
+                  Communicate any special power, internet, space, or equipment requirements
+                  to the organisers in advance.
+                </li>
+              </ul>
+            </article>
+
+            <article className="rule-card">
+              <h3>4. Conduct &amp; General Instructions</h3>
+              <ul>
+                <li>Follow the schedule and instructions communicated by the organisers.</li>
+                <li>Maintain discipline, respect other teams, and handle the venue and equipment responsibly.</li>
+                <li>
+                  Prototypes must be safe to operate. Hazardous, illegal, or potentially
+                  harmful materials are not permitted.
+                </li>
+                <li>
+                  Organisers may modify the schedule or guidelines when necessary and will
+                  communicate any changes to participants.
+                </li>
+              </ul>
+            </article>
+          </div>
+
+          <aside className="rules-announcement" aria-label="Important announcement">
+            <p className="section-kicker">Important Announcement</p>
+            <p>The selection-round date and further instructions will be announced soon.</p>
+            <strong>Only the 70 shortlisted teams will be invited to participate in the excursion showcase.</strong>
+          </aside>
+        </div>
       </section>
 
       <section className="registration-section" ref={registrationRef} id="register">
@@ -517,7 +604,7 @@ function ParticipantRegistration() {
       </section>
 
       <footer className="site-footer">
-        <span>{INTERNAL_COLLEGE}</span>
+        <img className="simats-logo footer-logo" src="/simats-engineering-logo-white.png" alt="SIMATS Engineering" />
         <span>Science Expo 2026</span>
         <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer">
           Join our WhatsApp community
@@ -528,6 +615,7 @@ function ParticipantRegistration() {
 }
 
 const ADMIN_PREVIEW_MODE = import.meta.env.DEV;
+const MAX_EMAIL_BATCH_SIZE = 15;
 
 interface ParticipantRegistrationStatus {
   registration_code: string;
@@ -745,7 +833,7 @@ function ParticipantProfile() {
         )}
       </section>
       <footer className="site-footer">
-        <span>{INTERNAL_COLLEGE}</span>
+        <img className="simats-logo footer-logo" src="/simats-engineering-logo-white.png" alt="SIMATS Engineering" />
         <span>Science Expo 2026</span>
         <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer">
           Join our WhatsApp community
@@ -837,7 +925,9 @@ function AdminDashboard() {
   const [draft, setDraft] = useState<AdminRegistration | null>(null);
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailBusyId, setEmailBusyId] = useState<string | null>(null);
+  const [selectedEmailIds, setSelectedEmailIds] = useState<string[]>([]);
+  const [emailBatchBusy, setEmailBatchBusy] = useState(false);
   const [emailStatus, setEmailStatus] = useState("");
   const [emailError, setEmailError] = useState("");
 
@@ -922,7 +1012,7 @@ function AdminDashboard() {
       const { data, error } = await supabase
         .from("registrations")
         .select("*")
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (error) throw error;
       setRegistrations((data ?? []) as AdminRegistration[]);
     } catch (error: unknown) {
@@ -969,19 +1059,26 @@ function AdminDashboard() {
     }
   };
 
-  const sendRegistrationEmail = async () => {
-    if (!selected?.id || typeof selected.id !== "string" || ADMIN_PREVIEW_MODE) return;
+  const sendRegistrationEmail = async (registration: AdminRegistration) => {
+    if (typeof registration.id !== "string" || !registration.id) {
+      setEmailError("This registration does not have a valid ID, so its email cannot be queued.");
+      return;
+    }
+    if (ADMIN_PREVIEW_MODE) {
+      setEmailError("Email queueing is unavailable in preview mode.");
+      return;
+    }
     if (!supabase) {
       setEmailError("Email sending is unavailable because Supabase is not configured.");
       return;
     }
 
-    setEmailBusy(true);
+    setEmailBusyId(registration.id);
     setEmailStatus("");
     setEmailError("");
     try {
       const { data, error } = await supabase.functions.invoke("admin-send-registration-email", {
-        body: { registration_id: selected.id },
+        body: { registration_id: registration.id },
       });
       if (error) throw error;
       if (data?.status === "sending") {
@@ -990,18 +1087,89 @@ function AdminDashboard() {
       if (data?.status !== "queued") {
         throw new Error("The email was not queued. Please try again.");
       }
-      setEmailStatus("Confirmation email queued. It will be sent by the scheduled email worker.");
+      setEmailStatus(
+        `Confirmation email for ${registration.leader_name || registration.leader_email} queued. ` +
+        "The scheduled email worker processes queued messages, usually within five minutes.",
+      );
     } catch (error: unknown) {
       setEmailError(error instanceof Error ? error.message : "Could not queue the confirmation email.");
     } finally {
-      setEmailBusy(false);
+      setEmailBusyId(null);
+    }
+  };
+
+  const toggleEmailSelection = (registration: AdminRegistration, checked: boolean) => {
+    const registrationId = registration.id;
+    if (typeof registrationId !== "string" || !registrationId) return;
+
+    setEmailStatus("");
+    setEmailError("");
+    if (!checked) {
+      setSelectedEmailIds((current) => current.filter((id) => id !== registrationId));
+      return;
+    }
+    if (selectedEmailIds.includes(registrationId)) return;
+    if (selectedEmailIds.length >= MAX_EMAIL_BATCH_SIZE) {
+      setEmailError(`A batch can contain at most ${MAX_EMAIL_BATCH_SIZE} registrations.`);
+      return;
+    }
+    setSelectedEmailIds((current) => [...current, registrationId]);
+  };
+
+  const queueEmailBatch = async () => {
+    if (!selectedEmailIds.length) return;
+    if (ADMIN_PREVIEW_MODE) {
+      setEmailError("Email batch queueing is unavailable in preview mode.");
+      return;
+    }
+    if (!supabase) {
+      setEmailError("Email batch queueing is unavailable because Supabase is not configured.");
+      return;
+    }
+
+    setEmailBatchBusy(true);
+    setEmailStatus("");
+    setEmailError("");
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-send-registration-email", {
+        body: { registration_ids: selectedEmailIds },
+      });
+      if (error) throw error;
+
+      const queuedCount = Number(data?.queued_count);
+      if (!Number.isInteger(queuedCount) || queuedCount < 1) {
+        throw new Error("No registrations in this batch could be queued.");
+      }
+
+      setEmailStatus(
+        `Queued ${queuedCount} of ${selectedEmailIds.length} selected emails as one batch. ` +
+        "The scheduled worker sends that batch together, subject to the daily limit.",
+      );
+      if (queuedCount < selectedEmailIds.length) {
+        const remainingIds = Array.isArray(data?.results)
+          ? data.results
+            .filter((result: { status?: unknown }) => result?.status !== "queued")
+            .map((result: { registration_id?: unknown }) => result?.registration_id)
+            .filter((id: unknown): id is string => typeof id === "string")
+          : selectedEmailIds;
+        setSelectedEmailIds(remainingIds);
+        setEmailError(
+          `${selectedEmailIds.length - queuedCount} registration(s) were not queued because they may already be sending or could not be found.`,
+        );
+      } else {
+        setSelectedEmailIds([]);
+      }
+    } catch (error: unknown) {
+      setEmailError(error instanceof Error ? error.message : "Could not queue the email batch.");
+    } finally {
+      setEmailBatchBusy(false);
     }
   };
 
   const filteredRegistrations = registrations.filter((registration) => {
     if (activeView === "team" && registration.team_or_solo !== "team") return false;
     if (activeView === "solo" && registration.team_or_solo !== "solo") return false;
-    if (typeFilter && !registration.participation_type.includes(typeFilter.trim().toLowerCase())) return false;
+    if (typeFilter && registration.participation_type !== typeFilter) return false;
     const query = search.trim().toLowerCase();
     if (!query) return true;
     const searchable = [
@@ -1011,7 +1179,14 @@ function AdminDashboard() {
       registration.leader_phone,
       registration.leader_college,
       registration.leader_reg_number,
-      ...registration.members.map((member) => member.name),
+      registration.team_name,
+      ...registration.members.flatMap((member) => [
+        member.name,
+        member.email,
+        member.phone,
+        member.reg_number,
+        member.college,
+      ]),
     ].filter(Boolean).join(" ").toLowerCase();
     return searchable.includes(query);
   });
@@ -1185,6 +1360,9 @@ function AdminDashboard() {
       </header>
 
       <div className="admin-container">
+        <p className="admin-email-help">
+          Select up to {MAX_EMAIL_BATCH_SIZE} registrations and queue them as one email batch. The scheduled worker sends each selected batch together.
+        </p>
         <section className="admin-stats-row" aria-label="Registration totals">
           {[
             ["Total Registrations", registrations.length],
@@ -1227,34 +1405,82 @@ function AdminDashboard() {
             placeholder="Search names, email, or registration code"
             aria-label="Search registrations"
           />
-          <input
-            type="text"
+          <select
             value={typeFilter}
             onChange={(event) => setTypeFilter(event.target.value)}
-            placeholder="Filter by internal or external"
             aria-label="Filter by participant type"
-          />
+          >
+            <option value="">All participant types</option>
+            <option value="internal">Internal</option>
+            <option value="external">External</option>
+          </select>
         </div>
 
+        <div className="admin-batch-toolbar">
+          <div>
+            <strong>{selectedEmailIds.length} / {MAX_EMAIL_BATCH_SIZE} selected</strong>
+            <span>Choose registration rows to send together.</span>
+          </div>
+          <div className="admin-batch-actions">
+            <button
+              className="admin-btn"
+              type="button"
+              onClick={() => void queueEmailBatch()}
+              disabled={!selectedEmailIds.length || emailBatchBusy || emailBusyId !== null || ADMIN_PREVIEW_MODE}
+              title={ADMIN_PREVIEW_MODE ? "Batch sending is disabled for sample registrations" : undefined}
+            >
+              {emailBatchBusy ? "Queueing batch…" : "Queue selected batch"}
+            </button>
+            <button
+              className="admin-btn admin-btn-outline"
+              type="button"
+              onClick={() => {
+                setSelectedEmailIds([]);
+                setEmailStatus("");
+                setEmailError("");
+              }}
+              disabled={!selectedEmailIds.length || emailBatchBusy}
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+        {ADMIN_PREVIEW_MODE && (
+          <p className="admin-member-hint">Preview mode: sample registrations can be selected, but no email will be queued.</p>
+        )}
+        {emailStatus && <p className="admin-status" role="status">{emailStatus}</p>}
+        {emailError && <p className="admin-error" role="alert">{emailError}</p>}
         {(dataError || loadingData) && (
           <p className={dataError ? "admin-error" : "admin-status"} role={dataError ? "alert" : "status"}>
             {dataError || "Loading registrations…"}
           </p>
         )}
-        <div className="admin-table-wrap">
+        <div className="admin-table-wrap" role="region" aria-label="Registration results" tabIndex={0}>
           <table>
             <thead>
               <tr>
-                <th>Code</th><th>Type</th><th>Participation</th><th>Participant Count</th>
+                <th>Batch</th><th>Code</th><th>Type</th><th>Participation</th><th>Participant Count</th>
                 <th>Participants</th><th>Leader Email</th><th>Leader Phone</th>
-                <th>College</th><th>Created At</th><th></th>
+                <th>College</th><th>Created At</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredRegistrations.length === 0 ? (
-                <tr><td className="admin-empty-state" colSpan={10}>No registrations found.</td></tr>
+                <tr><td className="admin-empty-state" colSpan={11}>No registrations found.</td></tr>
               ) : filteredRegistrations.map((registration) => (
                 <tr key={registration.id ?? registration.registration_code}>
+                  <td data-label="Email batch">
+                    <label className="admin-select-control">
+                      <input
+                        type="checkbox"
+                        checked={typeof registration.id === "string" && selectedEmailIds.includes(registration.id)}
+                        onChange={(event) => toggleEmailSelection(registration, event.target.checked)}
+                        disabled={typeof registration.id !== "string" || emailBatchBusy}
+                        aria-label={`Select ${registration.leader_name || registration.leader_email} for the email batch`}
+                      />
+                      <span>Select</span>
+                    </label>
+                  </td>
                   <td data-label="Code">{registration.registration_code || "Not assigned"}</td>
                   <td data-label="Type"><span className={`admin-badge ${registration.participation_type}`}>
                     {registration.participation_type}
@@ -1279,13 +1505,28 @@ function AdminDashboard() {
                       day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
                     })
                     : "Not available"}</td>
-                  <td data-label="Details"><button className="admin-btn admin-btn-outline admin-btn-sm" type="button" onClick={() => {
-                    setSelected(registration);
-                    setDraft(null);
-                    setSaveError("");
-                    setEmailStatus("");
-                    setEmailError("");
-                  }}>View</button></td>
+                  <td data-label="Actions">
+                    <div className="admin-row-actions">
+                      <button className="admin-btn admin-btn-outline admin-btn-sm" type="button" onClick={() => {
+                        setSelected(registration);
+                        setDraft(null);
+                        setSaveError("");
+                        setEmailStatus("");
+                        setEmailError("");
+                      }}>View</button>
+                      <button
+                        className="admin-btn admin-btn-outline admin-btn-sm"
+                        type="button"
+                        onClick={() => void sendRegistrationEmail(registration)}
+                        disabled={ADMIN_PREVIEW_MODE || emailBusyId === registration.id || emailBatchBusy}
+                        title={ADMIN_PREVIEW_MODE ? "Email queueing is disabled for sample registrations" : undefined}
+                      >
+                        {ADMIN_PREVIEW_MODE
+                          ? "Email unavailable"
+                          : emailBusyId === registration.id ? "Queueing…" : "Queue email"}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1402,16 +1643,17 @@ function AdminDashboard() {
                 <div className="admin-modal-actions">
                   {emailStatus && <p className="admin-status" role="status">{emailStatus}</p>}
                   {emailError && <p className="admin-error" role="alert">{emailError}</p>}
-                  {!ADMIN_PREVIEW_MODE && (
-                    <button
-                      className="admin-btn admin-btn-outline"
-                      type="button"
-                      onClick={() => void sendRegistrationEmail()}
-                      disabled={emailBusy || !selected.id}
-                    >
-                      {emailBusy ? "Queuing email…" : "Send confirmation email"}
-                    </button>
-                  )}
+                  <button
+                    className="admin-btn admin-btn-outline"
+                    type="button"
+                    onClick={() => void sendRegistrationEmail(selected)}
+                    disabled={ADMIN_PREVIEW_MODE || emailBusyId === selected.id || !selected.id}
+                    title={ADMIN_PREVIEW_MODE ? "Email queueing is disabled for sample registrations" : undefined}
+                  >
+                    {ADMIN_PREVIEW_MODE
+                      ? "Email unavailable in preview"
+                      : emailBusyId === selected.id ? "Queueing email…" : "Queue confirmation email"}
+                  </button>
                   <button className="admin-btn" type="button" onClick={startEditing}>Edit details</button>
                 </div>
               </>

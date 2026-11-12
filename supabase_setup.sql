@@ -265,6 +265,7 @@ CREATE TABLE IF NOT EXISTS public.registration_email_queue (
     CHECK (status IN ('pending', 'sending', 'sent', 'failed')),
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  manual_batch_id UUID,
   batch_id UUID,
   sent_at TIMESTAMPTZ,
   provider_message_id TEXT,
@@ -291,7 +292,11 @@ CREATE TABLE IF NOT EXISTS public.registration_email_batches (
 ALTER TABLE public.registration_email_queue
   ADD COLUMN IF NOT EXISTS batch_id UUID,
   ADD COLUMN IF NOT EXISTS team_details TEXT NOT NULL DEFAULT 'Individual registration',
-  ADD COLUMN IF NOT EXISTS participation TEXT NOT NULL DEFAULT 'Individual';
+  ADD COLUMN IF NOT EXISTS participation TEXT NOT NULL DEFAULT 'Individual',
+  ADD COLUMN IF NOT EXISTS manual_batch_id UUID;
+CREATE INDEX IF NOT EXISTS idx_registration_email_queue_manual_batch
+  ON public.registration_email_queue (manual_batch_id, next_attempt_at, created_at)
+  WHERE status = 'pending' AND manual_batch_id IS NOT NULL;
 ALTER TABLE public.registration_email_queue
   DROP CONSTRAINT IF EXISTS registration_email_queue_batch_id_fkey;
 ALTER TABLE public.registration_email_queue
@@ -385,7 +390,8 @@ BEGIN
     recipient_email,
     registration_code,
     team_details,
-    participation
+    participation,
+    manual_batch_id
   )
   VALUES (
     registration_row.id,
@@ -399,13 +405,15 @@ BEGIN
       ), 'No additional members listed')
       ELSE 'Individual registration'
     END,
-    CASE WHEN registration_row.team_or_solo = 'team' THEN 'Team' ELSE 'Individual' END
+    CASE WHEN registration_row.team_or_solo = 'team' THEN 'Team' ELSE 'Individual' END,
+    gen_random_uuid()
   )
   ON CONFLICT (registration_id, recipient_email) DO UPDATE
   SET participant_name = EXCLUDED.participant_name,
       registration_code = EXCLUDED.registration_code,
       team_details = EXCLUDED.team_details,
       participation = EXCLUDED.participation,
+      manual_batch_id = EXCLUDED.manual_batch_id,
       status = 'pending',
       attempts = 0,
       next_attempt_at = now(),
@@ -433,6 +441,60 @@ $$;
 REVOKE ALL ON FUNCTION public.admin_enqueue_registration_email(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_enqueue_registration_email(UUID) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.admin_enqueue_registration_email_batch(target_registration_ids UUID[])
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  manual_batch UUID := gen_random_uuid();
+  registration_id_to_queue UUID;
+  queued_result JSONB;
+  batch_results JSONB := '[]'::jsonb;
+BEGIN
+  IF target_registration_ids IS NULL
+    OR cardinality(target_registration_ids) < 1
+    OR cardinality(target_registration_ids) > 15
+    OR cardinality(target_registration_ids) <> (
+      SELECT count(DISTINCT id) FROM unnest(target_registration_ids) AS ids(id)
+    ) THEN
+    RAISE EXCEPTION 'A batch must contain 1 to 15 unique registration IDs';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext('science-expo-email-queue'));
+
+  FOREACH registration_id_to_queue IN ARRAY target_registration_ids LOOP
+    queued_result := public.admin_enqueue_registration_email(registration_id_to_queue);
+
+    IF queued_result ->> 'status' = 'queued' THEN
+      UPDATE public.registration_email_queue
+      SET manual_batch_id = manual_batch
+      WHERE registration_id = registration_id_to_queue
+        AND status = 'pending'
+        AND recipient_email = (
+          SELECT lower(btrim(leader_email))
+          FROM public.registrations
+          WHERE id = registration_id_to_queue
+        );
+    END IF;
+
+    batch_results := batch_results || jsonb_build_array(
+      queued_result || jsonb_build_object('registration_id', registration_id_to_queue)
+    );
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'status', 'queued',
+    'batch_id', manual_batch,
+    'results', batch_results
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_enqueue_registration_email_batch(UUID[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_enqueue_registration_email_batch(UUID[]) TO service_role;
+
 -- Cancel any unsent team-member messages from an earlier version of this setup.
 UPDATE public.registration_email_queue q
 SET status = 'failed',
@@ -450,6 +512,7 @@ SET search_path = pg_catalog, public
 AS $$
 DECLARE
   new_batch_id UUID;
+  manual_group_id UUID;
   batch_limit INTEGER;
   daily_total INTEGER;
   job_rows JSONB;
@@ -490,12 +553,26 @@ BEGIN
 
   batch_limit := LEAST(15, 100 - daily_total);
 
+  SELECT manual_batch_id
+  INTO manual_group_id
+  FROM public.registration_email_queue
+  WHERE manual_batch_id IS NOT NULL
+    AND status = 'pending'
+    AND attempts < 3
+    AND next_attempt_at <= now()
+  ORDER BY created_at, id
+  LIMIT 1;
+
   WITH candidates AS (
     SELECT id
     FROM public.registration_email_queue
     WHERE status = 'pending'
       AND attempts < 3
       AND next_attempt_at <= now()
+      AND (
+        (manual_group_id IS NOT NULL AND manual_batch_id = manual_group_id)
+        OR (manual_group_id IS NULL AND manual_batch_id IS NULL)
+      )
     ORDER BY created_at, id
     LIMIT batch_limit
     FOR UPDATE SKIP LOCKED
